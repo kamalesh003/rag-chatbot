@@ -129,25 +129,7 @@ async def list_documents():
         logger.error(f"Error listing documents: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to list documents: {str(e)}")
 
-@app.delete("/clear-vectorstore")
-async def clear_vectorstore():
-    """
-    Delete the existing vectorstore.
-    """
-    try:
-        vectorstore_path = Path("./vectorstore/faiss_index")
-        if vectorstore_path.exists():
-            import shutil
-            shutil.rmtree(vectorstore_path)
-            return JSONResponse(
-                status_code=200,
-                content={"message": "Vectorstore deleted successfully"}
-            )
-        else:
-            raise HTTPException(status_code=404, detail="Vectorstore not found")
-    except Exception as e:
-        logger.error(f"Error clearing vectorstore: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to clear vectorstore: {str(e)}")
+
 
 @app.get("/health")
 async def health_check():
