@@ -4,168 +4,137 @@ from pathlib import Path
 import os
 import logging
 from src.document_processor import DocumentProcessor
+from src.rag_pipeline import RAGPipeline
+from pydantic import BaseModel
+from typing import List, Optional
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+
+# Logging Setup
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
+
+# Pydantic Models
+
+class QueryRequest(BaseModel):
+    question: str
+    k: Optional[int] = 4
+
+
+# FastAPI App
 
 app = FastAPI(
     title="RAG Chatbot API",
-    description="API for document processing and vector storage",
+    description="Upload documents, build vectorstore, and query them using RAG pipeline",
     version="1.0.0"
 )
 
-# Initialize processor
+# Initialize processor and RAG pipeline
 processor = DocumentProcessor()
+rag_pipeline = RAGPipeline()
 
+
+# Endpoints
 
 
 @app.post("/add-documents")
-async def add_documents(files: list[UploadFile] = File(...)):
+async def add_documents(files: List[UploadFile] = File(...)):
     """
-    Add new documents to the vectorstore. ccreates vectorstore if it doesn't exist.
+    Add new documents to the vectorstore (PDF or TXT).
+    Creates a new vectorstore if none exists.
     """
     try:
-        # Ensure data directory exists
         os.makedirs("./data", exist_ok=True)
         file_paths = []
-        
-        # Save uploaded files
+
         for file in files:
-            file_extension = file.filename.split('.')[-1].lower()
-            if file_extension not in ['pdf', 'txt']:
+            ext = file.filename.split('.')[-1].lower()
+            if ext not in ["pdf", "txt"]:
                 logger.warning(f"Skipping unsupported file: {file.filename}")
                 continue
-            
+
             file_path = Path(f"./data/{file.filename}")
-            
-            # Read and save file content
-            content = await file.read()
             with open(file_path, "wb") as f:
-                f.write(content)
-            
+                f.write(await file.read())
             file_paths.append(file_path)
-            logger.info(f"Saved file: {file.filename}")
-        
+
         if not file_paths:
             raise HTTPException(status_code=400, detail="No valid PDF/TXT files provided")
-        
-        # Check if vectorstore exists
-        existing_vectorstore = processor.load_existing_vectorstore()
-        
-        if existing_vectorstore:
-            # Add to existing vectorstore
+
+        # Load existing store if available
+        existing_store = processor.load_existing_vectorstore()
+        if existing_store:
             chunks_added = processor.add_documents_to_existing_store(file_paths)
-            return JSONResponse(
-                status_code=200,
-                content={
-                    "message": "Documents added to existing vectorstore",
-                    "chunks_added": chunks_added,
-                    "vectorstore_created": False
-                }
-            )
+            return {"message": "Documents added to existing vectorstore", "chunks_added": chunks_added}
         else:
-            # Create new vectorstore with uploaded files
-            # First, remove any existing files in data directory to avoid duplicates
-            for existing_file in processor.get_supported_files():
-                if existing_file not in file_paths:
-                    os.remove(existing_file)
-            
-            # Process the uploaded files
             vectorstore, chunk_count = processor.process_documents()
-            return JSONResponse(
-                status_code=201,
-                content={
-                    "message": "New vectorstore created with uploaded documents",
-                    "chunks_processed": chunk_count,
-                    "vectorstore_created": True
-                }
-            )
-            
-    except HTTPException:
-        raise
+            return {"message": "New vectorstore created", "chunks_processed": chunk_count}
+
     except Exception as e:
         logger.error(f"Error adding documents: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to add documents: {str(e)}")
 
-@app.get("/load-vectorstore")
-async def load_vectorstore():
-    """
-    Check if vectorstore exists and can be loaded.
-    """
-    try:
-        vectorstore = processor.load_existing_vectorstore()
-        if not vectorstore:
-            raise HTTPException(status_code=404, detail="No vectorstore found")
-        
-        return JSONResponse(
-            status_code=200,
-            content={
-                "message": "Vectorstore loaded successfully",
-                "exists": True
-            }
-        )
-    except Exception as e:
-        logger.error(f"Error loading vectorstore: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to load vectorstore: {str(e)}")
-
 @app.get("/list-documents")
 async def list_documents():
     """
-    List all supported documents in the data directory.
+    List all PDF/TXT documents in the data directory.
     """
     try:
         files = processor.get_supported_files()
-        return JSONResponse(
-            status_code=200,
-            content={
-                "documents": [str(file.name) for file in files],
-                "count": len(files)
-            }
-        )
+        return {"documents": [file.name for file in files], "count": len(files)}
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+@app.get("/load-vectorstore")
+async def load_vectorstore():
+    """
+    Load the FAISS vectorstore if available.
+    """
+    try:
+        if processor.load_existing_vectorstore():
+            return {"message": "Vectorstore loaded successfully", "exists": True}
+        else:
+            raise HTTPException(status_code=404, detail="No vectorstore found")
     except Exception as e:
-        logger.error(f"Error listing documents: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to list documents: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to load vectorstore: {str(e)}")
 
+@app.post("/query")
+async def query_documents(request: QueryRequest):
+    """
+    Ask a question against the document knowledge base.
+    """
+    try:
+        if not request.question.strip():
+            raise HTTPException(status_code=400, detail="Question cannot be empty")
 
+        result = rag_pipeline.query(request.question, k=request.k)
+        return result
+    except Exception as e:
+        logger.error(f"Error querying documents: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}")
 
 @app.get("/health")
 async def health_check():
-    """
-    Health check endpoint.
-    """
-    return JSONResponse(
-        status_code=200,
-        content={
-            "status": "healthy",
-            "service": "RAG Chatbot API",
-            "version": "1.0.0"
-        }
-    )
+    return {"status": "healthy", "service": "RAG Chatbot API", "version": "1.0.0"}
 
 @app.get("/")
 async def root():
-    """
-    Root endpoint with API information.
-    """
-    return JSONResponse(
-        status_code=200,
-        content={
-            "message": "RAG Chatbot API",
-            "version": "1.0.0",
-            "endpoints": {
-                "docs": "/docs",
-                "health": "/health",
-                "process_documents": "/process-documents",
-                "add_documents": "/add-documents",
-                "load_vectorstore": "/load-vectorstore",
-                "list_documents": "/list-documents",
-                "clear_vectorstore": "/clear-vectorstore"
-            }
+    return {
+        "message": "RAG Chatbot API",
+        "version": "1.0.0",
+        "endpoints": {
+            "docs": "/docs",
+            "health": "/health",
+            "add_documents": "/add-documents",
+            "load_vectorstore": "/load-vectorstore",
+            "list_documents": "/list-documents",
+            "query": "/query"
         }
-    )
+    }
+
+
+
+
 
 if __name__ == "__main__":
     import uvicorn
