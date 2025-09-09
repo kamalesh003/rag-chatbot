@@ -22,124 +22,138 @@ https://huggingface.co/spaces/higher5fh/rag-chatbot
 
 
 
-# Document Processing and RAG Pipeline System Documentation
+## DocumentProcessor (document_processor.py)
+
+**Purpose**: Handles document loading, processing, and vector store management.
+
+### Key Functions:
+
+**Initialization:**
+- `__init__()` - Sets up data directory, vector store path, embeddings, and supported file types
+
+**File Operations:**
+- `get_supported_files()` - Returns list of supported files (.pdf, .txt) in data directory
+- `load_document(file_path)` - Loads a single document (PDF or TXT) and adds source metadata
+
+**Document Processing:**
+- `split_documents(documents)` - Splits documents into chunks with configurable size/overlap
+- `create_vectorstore(chunks)` - Creates FAISS vector store from document chunks
+- `save_vectorstore(vectorstore)` - Saves vector store to disk
+
+**Vector Store Management:**
+- `load_existing_vectorstore()` - Loads existing vector store from disk
+- `process_documents()` - Full pipeline: loads all files, splits, creates and saves vector store
+- `add_documents_to_existing_store(file_paths)` - Adds new documents to existing vector store
+
+## RAGPipeline (rag_pipeline.py)
+
+**Purpose**: Handles querying and retrieval from the vector store using RAG pattern.
+
+### Key Functions:
+
+**Initialization:**
+- `__init__()` - Sets up vector store path, embeddings, and LLM (GPT-3.5-turbo)
+
+**Vector Store Operations:**
+- `load_vectorstore()` - Loads the FAISS vector store from disk
+
+**Retrieval & Querying:**
+- `retrieve_context(query, k=4)` - Finds most relevant documents for a query
+- `format_context(documents)` - Formats retrieved documents into readable context string
+- `generate_answer(query, context)` - Uses LLM to generate answer based on context
+
+**Main Pipeline:**
+- `query(question, k=4)` - Complete RAG workflow: retrieval → context formatting → answer generation
 
 
 
-## Module 1: DocumentProcessor
+## How the Streamlit App Utilizes Both Modules
 
-The `DocumentProcessor` class handles document loading, splitting, and vector store creation/management.
+### 1. **DocumentProcessor Integration**
 
-### Key Functions
+**File Upload & Processing:**
+```python
+# Uses DocumentProcessor to handle document operations
+processor = st.session_state.processor = DocumentProcessor()
 
-#### 1. `__init__(data_dir: str, vectorstore_path: str)`
-- **Purpose**: Initialize the document processor with data directory and vector store path
-- **Parameters**:
-  - `data_dir`: Path to directory containing documents (default: "./data")
-  - `vectorstore_path`: Path to store/load FAISS vector store (default: "./vectorstore/faiss_index")
-- **Optimization**: Uses OpenAI embeddings with configurable model via environment variable
+# Get supported files from data directory
+files = processor.get_supported_files()
 
-#### 2. `get_supported_files() → List[Path]`
-- **Purpose**: Retrieve all supported files from the data directory
-- **Supported Formats**: PDF (.pdf) and Text (.txt) files
-- **Error Handling**: Raises FileNotFoundError if data directory doesn't exist
+# Load individual documents
+documents = processor.load_document(file_path)
 
-#### 3. `load_document(file_path: Path) → List[Document]`
-- **Purpose**: Load a document based on its file type
-- **Format Handling**:
-  - PDF files: Uses PyPDFLoader
-  - Text files: Uses TextLoader with UTF-8 encoding
-- **Metadata Enhancement**: Adds source_file metadata to track document origin
-- **Error Handling**: Comprehensive exception handling with detailed logging
+# Split documents into chunks
+chunks = processor.split_documents(documents)
 
-#### 4. `split_documents(documents: List[Document], chunk_size: int, chunk_overlap: int) → List[Document]`
-- **Purpose**: Split documents into manageable chunks for processing
-- **Default Parameters**: 
-  - `chunk_size`: 1000 characters
-  - `chunk_overlap`: 200 characters
-- **Optimization**: Uses recursive character splitting with intelligent separators
+# Create vector store
+vectorstore = processor.create_vectorstore(chunks)
 
-#### 5. `create_vectorstore(chunks: List[Document]) → FAISS`
-- **Purpose**: Create a FAISS vector store from document chunks
-- **Embeddings**: Uses configured OpenAI embeddings
+# Save vector store
+processor.save_vectorstore(vectorstore)
 
-#### 6. `save_vectorstore(vectorstore: FAISS)`
-- **Purpose**: Save vector store to disk
-- **Directory Management**: Automatically creates parent directories if needed
+# Load existing vector store
+existing_store = processor.load_existing_vectorstore()
 
-#### 7. `load_existing_vectorstore() → Optional[FAISS]`
-- **Purpose**: Load an existing vector store from disk
-- **Security Note**: Uses `allow_dangerous_deserialization` flag (requires trust in source)
+# Add new documents to existing store
+chunks_added = processor.add_documents_to_existing_store(file_paths)
+```
 
-#### 8. `process_documents() → Tuple[FAISS, int]`
-- **Purpose**: Complete pipeline to process all documents in data directory
-- **Workflow**: 
-  1. Get all supported files
-  2. Load each document
-  3. Split into chunks
-  4. Create vector store
-  5. Save to disk
-- **Returns**: Vector store instance and total chunk count
+**Key Features:**
+- Handles PDF and TXT file uploads
+- Processes documents into chunks
+- Manages vector store creation and updates
+- Provides document listing functionality
 
-#### 9. `add_documents_to_existing_store(file_paths: List[Path]) → int`
-- **Purpose**: Add new documents to an existing vector store
-- **Workflow**:
-  1. Load existing vector store
-  2. Process new documents
-  3. Add chunks to existing store
-  4. Save updated store
-- **Returns**: Number of new chunks added
+### 2. **RAGPipeline Integration**
 
-## Module 2: RAGPipeline
+**Query Processing:**
+```python
+# Uses RAGPipeline for retrieval and generation
+rag_pipeline = st.session_state.rag_pipeline = RAGPipeline()
 
-The `RAGPipeline` class handles querying the vector store and generating answers using LLMs.
+# Load vector store into RAG pipeline
+rag_pipeline.load_vectorstore()
 
-### Key Functions
+# Execute queries
+result = rag_pipeline.query(user_input, k=k_slider)
+```
 
-#### 1. `__init__(vectorstore_path: str)`
-- **Purpose**: Initialize the RAG pipeline with vector store path
-- **Components**:
-  - OpenAI embeddings (text-embedding-3-small)
-  - ChatOpenAI LLM (gpt-3.5-turbo, temperature=0)
-  - Vector store reference
+**Key Features:**
+- Handles similarity search and retrieval
+- Formats context from retrieved documents
+- Generates answers using OpenAI LLM
+- Manages the complete RAG workflow
 
-#### 2. `load_vectorstore() → bool`
-- **Purpose**: Load the FAISS vector store from disk
-- **Error Handling**: Returns boolean status with detailed logging
+## Complete Workflow in the App
 
-#### 3. `retrieve_context(query: str, k: int) → List[Document]`
-- **Purpose**: Retrieve relevant document chunks for a query
-- **Parameters**:
-  - `query`: User question
-  - `k`: Number of chunks to retrieve (default: 4)
-- **Method**: FAISS similarity search
+### 1. **Document Management (Using DocumentProcessor)**
+- Users upload PDF/TXT files through the sidebar
+- Files are saved to `./data` directory
+- `DocumentProcessor` processes them into vector embeddings
+- Vector store is created/updated in `./vectorstore/faiss_index/`
 
-#### 4. `format_context(documents: List[Document]) → str`
-- **Purpose**: Format retrieved documents into a readable context string
-- **Format**: Includes source file and page information for citation
+### 2. **Vector Store Management**
+- **Loading**: `processor.load_existing_vectorstore()` + `rag_pipeline.load_vectorstore()`
+- **Health Checks**: System status checks using both modules
+- **Error Handling**: Graceful handling of missing vector stores
 
-#### 5. `generate_answer(query: str, context: str) → str`
-- **Purpose**: Generate answer using LLM with retrieved context
-- **Prompt Engineering**: Includes instructions for:
-  - Context-based answering
-  - Handling insufficient information
-  - Conciseness and accuracy
-  - Source citation
+### 3. **Chat Interface (Using RAGPipeline)**
+- User inputs questions through text input
+- `RAGPipeline.query()` handles:
+  - Retrieval of relevant document chunks
+  - Context formatting
+  - Answer generation using GPT-3.5-turbo
+- Results include answer + source citations
 
-#### 6. `query(question: str, k: int) → dict`
-- **Purpose**: Complete RAG pipeline execution
-- **Workflow**:
-  1. Load vector store (if not loaded)
-  2. Retrieve relevant context
-  3. Format context
-  4. Generate answer
-  5. Extract source information
-- **Returns**: Comprehensive response dictionary with:
-  - Answer text
-  - Source documents with metadata
-  - Context string
-  - Retrieved document count
-  - Error information (if any)
+### 4. **Session Management**
+- Chat history persistence across sessions
+- Source tracking and display
+- Session creation/deletion
+
+
+
+
+
 
 
 
