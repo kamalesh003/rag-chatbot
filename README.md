@@ -17,7 +17,7 @@ https://huggingface.co/spaces/higher5fh/rag-chatbot
 
 <img width="1915" height="825" alt="Screenshot 2025-09-05 055120" src="https://github.com/user-attachments/assets/b261fb9c-9940-4e95-9d0d-4d4507f0a49f" />
 
-## ARCHITECTURE DIAGRAM:
+## FLOW DIAGRAM:
 <img width="3840" height="2931" alt="Untitled diagram _ Mermaid Chart-2025-09-10-020132" src="https://github.com/user-attachments/assets/9f9af7b0-55bf-4fb3-95b5-8dee1ae08f41" />
 
 
