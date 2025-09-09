@@ -13,8 +13,9 @@ https://huggingface.co/spaces/higher5fh/rag-chatbot
 7. **Current converstation = short-term view (2–3 pairs)**
 8. **Chat history = full session log.**
 
-## ARCHITECTURE DIAGRAM:
+## WORKING OF RAG:
 
 <img width="1915" height="825" alt="Screenshot 2025-09-05 055120" src="https://github.com/user-attachments/assets/b261fb9c-9940-4e95-9d0d-4d4507f0a49f" />
+
 
 
